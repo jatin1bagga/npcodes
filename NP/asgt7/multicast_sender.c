@@ -1,56 +1,56 @@
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 
-struct in_addr localInterface;
-struct sockaddr_in sockaddr;
-int sd;
-int datalen;
-char databuf[1024]; 
+#define MULTICAST_GROUP "239.0.0.1"  // Multicast group address (Class D)
+#define MULTICAST_PORT 12345         // Port to send the message
+#define MESSAGE "Hello, Multicast!"
 
-int main (int argc, char *argv[]){
+int main() {
+    int sockfd;
+    struct sockaddr_in multicast_addr;
+    char *multicast_message = MESSAGE;
+    int loopback = 1;  // Enable loopback for local system to receive the datagrams
 
-    sd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sd < 0) {
-        perror("opening datagram socket");
-        exit(1);
+    // 1. Create a UDP socket (AF_INET, SOCK_DGRAM)
+    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
     }
 
-    memset((char *) &sockaddr, 0, sizeof(sockaddr));
-    sockaddr.sin_family = AF_INET;
-    sockaddr.sin_addr.s_addr = inet_addr("225.1.1.1");  
-    sockaddr.sin_port = htons(5555);  
+    // 2. Initialize the sockaddr_in structure
+    memset(&multicast_addr, 0, sizeof(multicast_addr));
+    multicast_addr.sin_family = AF_INET;
+    multicast_addr.sin_addr.s_addr = inet_addr(MULTICAST_GROUP);  // Set multicast group
+    multicast_addr.sin_port = htons(MULTICAST_PORT);              // Set port
 
- 
-    char loopch = 0;
-    if (setsockopt(sd, IPPROTO_IP, IP_MULTICAST_LOOP, (char *)&loopch, sizeof(loopch)) < 0) {
-        perror("setting IP_MULTICAST_LOOP:");
-        close(sd);
-        exit(1);
+    // 3. Set the IP_MULTICAST_LOOP socket option (allows loopback)
+    if (setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_LOOP, &loopback, sizeof(loopback)) < 0) {
+        perror("Setting IP_MULTICAST_LOOP failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
     }
 
-    localInterface.s_addr = inet_addr("127.0.0.1");  
-    if (setsockopt(sd, IPPROTO_IP, IP_MULTICAST_IF, (char *)&localInterface, sizeof(localInterface)) < 0) {
-        perror("setting local interface");
-        close(sd);
-        exit(1);
-    }
-    printf("Enter message to send : ");
-    fgets(databuf, 1024, stdin);
-    datalen = strlen(databuf);  
-    if (sendto(sd, databuf, datalen, 0, (struct sockaddr*)&sockaddr, sizeof(sockaddr)) < 0) {
-        perror("sending datagram message");
-        close(sd);
-        exit(1);
+    // 4. Set the IP_MULTICAST_IF socket option to define the local interface to send datagrams
+    struct in_addr local_interface;
+    local_interface.s_addr = inet_addr("127.0.0.1");  // Local interface IP address
+
+    if (setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_IF, &local_interface, sizeof(local_interface)) < 0) {
+        perror("Setting IP_MULTICAST_IF failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
     }
 
-    printf("Multicast message sent successfully.\n");
+    // 5. Send the multicast message
+    if (sendto(sockfd, multicast_message, strlen(multicast_message), 0, (struct sockaddr *)&multicast_addr, sizeof(multicast_addr)) < 0) {
+        perror("Sendto failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
 
-    close(sd);
+    printf("Multicast message sent: %s\n", multicast_message);
+    close(sockfd);
     return 0;
 }
